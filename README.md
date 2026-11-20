@@ -4,6 +4,11 @@
 
 > 本应用只读打开飞牛影视数据库，不修改、不移动、不删除任何视频文件，也不联网抓取数据。
 
+## 仓库与下载
+
+- 源码仓库：https://github.com/liangpangzhi/metabridge
+- 安装包下载（Release v1.0.3）：https://github.com/liangpangzhi/metabridge/releases/tag/v1.0.3
+
 ## 交付物
 
 - `dist/metabridge-1.0.3-x86.fpk` — Intel / AMD 飞牛设备
