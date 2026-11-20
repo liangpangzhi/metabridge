@@ -101,6 +101,24 @@ def main():
         assert list(tv_dir.parent.glob("poster.*")), "tvshow poster missing"
         assert list(tv_dir.glob("season01.*")), "season poster missing"
         assert movie_video.read_bytes() == b"fake" and ep_video.read_bytes() == b"fake"
+
+        # ---- delete / cleanup verification ----
+        # add a third-party NFO in the movie dir: it must never be deleted
+        third = movie_dir / "第三方.nfo"
+        third.write_text("<movie><title>other</title></movie>", encoding="utf-8")
+        con = core.connect(str(root / "trimmedia.db"))
+        dgroups, dcounts = core.build_delete_plan(con, cfg, {})
+        con.close()
+        allpaths = [f["path"] for g in dgroups for f in g["files"]]
+        assert mnfo.exists() and any(p == str(mnfo) for p in allpaths), "marked movie NFO should be listed"
+        assert str(third) not in allpaths, "third-party NFO must not be listed"
+        assert not any(p.endswith(".mkv") for p in allpaths), "video files must not be listed"
+        dstats = core.delete_files([f for g in dgroups for f in g["files"]])
+        print("delete stats:", {k: v for k, v in dstats.items() if k != "files"})
+        assert not mnfo.exists() and not enfo.exists() and not tvnfo.exists() and not snfo.exists()
+        assert third.exists(), "third-party NFO must survive"
+        assert movie_video.read_bytes() == b"fake" and ep_video.read_bytes() == b"fake"
+        assert not list(movie_dir.glob("poster.*")), "movie poster should be deleted"
         print("SELFTEST OK")
 
 
