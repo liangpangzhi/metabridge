@@ -1,5 +1,5 @@
 appname=com.fnos.metabridge
-version=1.0.3
+version=1.0.4
 display_name=元影桥
 desc=从飞牛影视已刮削数据库导出 Emby / Jellyfin / Kodi 可用的 NFO 元数据与海报，直接写入媒体文件原目录。数据库只读，不改视频文件。
 platform=x86
@@ -12,4 +12,4 @@ checkport=true
 desktop_uidir=ui
 desktop_applaunchname=com.fnos.metabridge.main
 ctl_stop=true
-changelog=1.0.3 调整界面标签顺序为「剧集总概述 → 预览与确认 → 导出结果」。1.0.2 导出前逐部预览与勾选确认；DVD 光驱图标。1.0.1 修复桌面图标空白；1.0.0 首个版本。
+changelog=1.0.4 新增「清理删除」：扫描并删除本工具生成的 NFO 与图片，按作品预览勾选、二次确认，视频文件受保护。1.0.3 标签顺序调整为「剧集总概述 → 预览与确认 → 导出结果」。1.0.2 导出前逐部预览与勾选确认；DVD 光驱图标。1.0.1 修复桌面图标空白；1.0.0 首个版本。
