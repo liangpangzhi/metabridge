@@ -1,0 +1,3 @@
+#!/bin/bash
+# metabridge lifecycle hook: upgrade_callback
+exit 0

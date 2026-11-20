@@ -1,0 +1,15 @@
+appname=com.fnos.metabridge
+version=1.0.3
+display_name=元影桥
+desc=从飞牛影视已刮削数据库导出 Emby / Jellyfin / Kodi 可用的 NFO 元数据与海报，直接写入媒体文件原目录。数据库只读，不改视频文件。
+platform=x86
+source=thirdparty
+maintainer=WorkBuddy
+distributor=WorkBuddy
+os_min_version=1.2.0
+service_port=22690
+checkport=true
+desktop_uidir=ui
+desktop_applaunchname=com.fnos.metabridge.main
+ctl_stop=true
+changelog=1.0.3 调整界面标签顺序为「剧集总概述 → 预览与确认 → 导出结果」。1.0.2 导出前逐部预览与勾选确认；DVD 光驱图标。1.0.1 修复桌面图标空白；1.0.0 首个版本。

@@ -1,0 +1,7 @@
+# 文本文件统一 LF —— cmd/ 下的脚本在 Linux(fnOS) 执行，CRLF 会导致执行失败
+* text=auto eol=lf
+
+# 二进制文件不做任何换行转换
+*.png binary
+*.fpk binary
+*.sha256 text eol=lf

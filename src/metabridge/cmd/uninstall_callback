@@ -1,0 +1,3 @@
+#!/bin/bash
+# metabridge lifecycle hook: uninstall_callback
+exit 0

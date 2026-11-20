@@ -1,0 +1,64 @@
+#!/bin/bash
+# metabridge — app center start / stop / status entry
+set -u
+
+CMDDIR="$(cd "$(dirname "$0")" && pwd)"
+APPDIR="${TRIM_APPDEST:-}"
+if [ -z "$APPDIR" ]; then
+    for cand in /usr/local/apps/@appcenter/com.fnos.metabridge/app \
+                /vol*/@appcenter/com.fnos.metabridge/app \
+                "$(dirname "$CMDDIR")/app"; do
+        if [ -f "$cand/metabridge/server.py" ]; then APPDIR="$cand"; break; fi
+    done
+    APPDIR="${APPDIR:-$(dirname "$CMDDIR")/app}"
+fi
+VAR="${TRIM_PKGVAR:-$(dirname "$CMDDIR")/var}"
+PORT="${TRIM_SERVICE_PORT:-22690}"
+PID="$VAR/metabridge.pid"
+LOG="$VAR/server.log"
+
+mkdir -p "$VAR" 2>/dev/null || true
+
+health() {
+    curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/status" 2>/dev/null | grep -q '"ok": *true'
+}
+
+case "${1:-}" in
+start)
+    if health; then exit 0; fi
+    if [ ! -f "$APPDIR/metabridge/server.py" ]; then
+        echo "找不到应用主程序：$APPDIR/metabridge/server.py" > "${TRIM_TEMP_LOGFILE:-$LOG}"
+        exit 1
+    fi
+    METABRIDGE_VAR="$VAR" METABRIDGE_PORT="$PORT" \
+        nohup python3 "$APPDIR/metabridge/server.py" >> "$LOG" 2>&1 &
+    echo $! > "$PID"
+    for _ in $(seq 1 40); do
+        if health; then exit 0; fi
+        sleep 0.5
+    done
+    tail -n 20 "$LOG" > "${TRIM_TEMP_LOGFILE:-$LOG}" 2>/dev/null || true
+    exit 1
+    ;;
+stop)
+    if [ -f "$PID" ]; then
+        p=$(cat "$PID" | tr -d '[:space:]')
+        if [ -n "$p" ]; then kill "$p" 2>/dev/null || true; fi
+        rm -f "$PID"
+    fi
+    pkill -f "$APPDIR/metabridge/server.py" 2>/dev/null || true
+    exit 0
+    ;;
+status)
+    if health; then exit 0; fi
+    if [ -f "$PID" ]; then
+        p=$(cat "$PID" | tr -d '[:space:]')
+        if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then exit 0; fi
+        rm -f "$PID"
+    fi
+    exit 3
+    ;;
+*)
+    exit 1
+    ;;
+esac

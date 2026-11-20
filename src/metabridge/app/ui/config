@@ -1,0 +1,1 @@
+{ ".url": { "com.fnos.metabridge.main": { "title": "元影桥", "desc": "飞牛影视元数据导出到媒体原目录（Emby / Jellyfin / Kodi）", "icon": "images/icon_{0}.png", "type": "url", "protocol": "http", "port": "22690", "url": "/", "allUsers": true } } }
