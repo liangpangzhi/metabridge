@@ -7,12 +7,12 @@
 ## 仓库与下载
 
 - 源码仓库：https://github.com/liangpangzhi/metabridge
-- 安装包下载（Release v1.0.3）：https://github.com/liangpangzhi/metabridge/releases/tag/v1.0.3
+- 安装包下载（Release v1.0.4）：https://github.com/liangpangzhi/metabridge/releases/tag/v1.0.4
 
 ## 交付物
 
-- `dist/metabridge-1.0.3-x86.fpk` — Intel / AMD 飞牛设备
-- `dist/metabridge-1.0.3-arm.fpk` — ARM 飞牛设备
+- `dist/metabridge-1.0.4-x86.fpk` — Intel / AMD 飞牛设备
+- `dist/metabridge-1.0.4-arm.fpk` — ARM 飞牛设备
 - `src/metabridge/` — fpk 源码工程（可直接用 `fnpack build` 打包）
 - `tools/` — 自检、图标生成、自定义打包、数据库结构诊断脚本
 
@@ -23,7 +23,7 @@
 也可 SSH 执行：
 
 ```bash
-appcenter-cli install-fpk /path/to/metabridge-1.0.3-x86.fpk
+appcenter-cli install-fpk /path/to/metabridge-1.0.4-x86.fpk
 ```
 
 安装后桌面出现「元影桥」图标，默认端口 **22690**。
@@ -42,6 +42,16 @@ appcenter-cli install-fpk /path/to/metabridge-1.0.3-x86.fpk
 5. 勾选本次要导出的作品（支持全选 / 全不选 / 反选 / 搜索过滤），点「确认导出所选」，在弹窗中再次核对作品数、文件数和目标目录后确认。未确认前不会写入任何文件。
 6. 若直接在「导出结果」页点「开始导出」，也会先弹出范围确认；当预览中已有勾选时，只导出勾选的作品。
 7. 导出完成后在「导出结果」页查看进度、统计与实时日志；完整历史日志在「日志」页。
+
+### 清理删除已导出的元数据
+
+如需撤销导出，进入「清理删除」页：
+
+1. 点「扫描可删除文件」，系统列出本工具写入的 NFO 与图片（按作品分组，显示封面与文件清单）。
+2. 勾选要清理的作品（支持全选 / 全不选 / 反选 / 搜索），点「确认删除所选」并二次确认后执行。
+
+安全规则：**只删除带「metabridge:generated」标记的 NFO 及其对应图片**；第三方 NFO、所有视频文件均受保护，不会被删除。删除不可撤销，操作前请核对文件清单。
+
 
 ### 写出文件规则
 
@@ -99,7 +109,7 @@ python3 tools/inspect_db.py
 ```bash
 python3 tools/selftest.py                 # 离线自检：造一个假库验证 NFO 输出
 python3 tools/make_icons.py               # 由 assets/app_icon_source.png 生成全部尺寸图标
-python3 tools/build_fpk.py 1.0.3 --platform x86,arm
+python3 tools/build_fpk.py 1.0.4 --platform x86,arm
 ```
 
 产物在 `dist/`，每个包附带 `.sha256`。
