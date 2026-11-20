@@ -22,7 +22,7 @@ $('#btn-goto-preview').onclick = () => goto('preview');
 
 window.__groups = [];
 window.__selected = new Set();
-const ACTION = {create:'新建', refresh:'更新', overwrite:'覆盖', skip:'跳过'};
+const ACTION = {create:'新建', refresh:'更新', overwrite:'覆盖', skip:'跳过', delete:'删除'};
 
 function renderStatus(d) {
   window.__cfg = d.config || {};
@@ -66,7 +66,11 @@ function renderJob(j) {
   $('#log').textContent = lines || '尚无任务日志。';
   $('#log-full').textContent = lines || '尚无任务日志。';
   $('#btn-stop').disabled = !(j.state === 'running' || j.state === 'stopping');
-  if ((j.groups || []).length) renderGroups(j.groups);
+  if ((j.groups || []).length) {
+    if (j.mode === 'delete') renderCleanGroups(j.groups);
+    else renderGroups(j.groups);
+  }
+  if (j.mode === 'delete') $('#clean-log').textContent = lines || '尚无删除日志。';
 }
 
 function visibleGroups() {
@@ -272,3 +276,103 @@ function poll(fast = false) {
   tick();
 }
 refresh().then(() => api('/api/job').then(j => { if ((j.groups || []).length) renderGroups(j.groups); }));
+
+/* ---------- cleanup / delete page ---------- */
+window.__clean = [];
+window.__cleanSel = new Set();
+
+function cleanVisible() {
+  const q = ($('#clean-search')?.value || '').trim().toLowerCase();
+  if (!q) return window.__clean;
+  return window.__clean.filter(g => {
+    const m = g.meta || {};
+    return [g.title, m.title, m.original, (m.genres || []).join(' '),
+      (m.actors || []).map(a => a.name).join(' ')].join(' ').toLowerCase().includes(q);
+  });
+}
+function fmtSize(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+function renderCleanGroups(groups) {
+  window.__clean = groups || [];
+  const shown = cleanVisible();
+  const files = window.__clean.reduce((n, g) => n + (g.count || 0), 0);
+  const nfo = window.__clean.reduce((n, g) => n + (g.files || []).filter(f => f.kind === 'nfo').length, 0);
+  const img = window.__clean.reduce((n, g) => n + (g.files || []).filter(f => f.kind === 'image').length, 0);
+  $('#clean-summary').innerHTML =
+    `扫描到 <b>${window.__clean.length}</b> 部作品，可删除 <b>${files}</b> 个文件` +
+    `（NFO ${nfo} / 图片 ${img}）。当前显示 ${shown.length} 部。视频文件不在删除范围内。`;
+  $('#clean-list').innerHTML = shown.length ? shown.map(g => {
+    const m = g.meta || {};
+    const sel = window.__cleanSel.has(g.key);
+    const cover = coverUrl(m);
+    return `<div class="media-card danger-card ${sel ? 'selected' : ''}" data-key="${esc(g.key)}">
+      <div class="card-top">
+        <label class="picklab"><input type="checkbox" class="clean-pick" data-key="${esc(g.key)}" ${sel ? 'checked' : ''}>
+          <span class="tag ${g.kind}">${g.kind === 'movie' ? '电影' : '电视剧'}</span></label>
+        <span class="filecount">${g.count || 0} 个文件</span>
+      </div>
+      <div class="cover-wrap">
+        <div class="cover-ph">◉</div>
+        ${cover ? `<img class="cover" src="${esc(cover)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+      </div>
+      <div class="card-body">
+        <div class="card-title" title="${esc(m.title || g.title)}">${esc(m.title || g.title || '(无标题)')}</div>
+        <div class="card-sub">${esc(m.year || '')}${m.rating ? ' · ★ ' + esc(m.rating) : ''}</div>
+        <details class="files" open><summary>将删除的文件 (${g.count || 0})</summary>
+          ${(g.files || []).map(f => `<div class="frow"><span class="mini-tag ${f.kind}">${f.kind === 'nfo' ? 'NFO' : '图片'}</span><span class="fsize">${fmtSize(f.size)}</span><span class="fpath" title="${esc(f.path)}">${esc(f.path)}</span></div>`).join('')}
+        </details>
+        <details class="dirs"><summary>所在目录</summary>${(g.dirs || []).map(d => `<div class="dpath">${esc(d)}</div>`).join('')}</details>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">没有可删除的文件，或换个关键词试试。只有本工具生成且带标记的元文件才会列出。</div>';
+  updateCleanSelection();
+}
+function updateCleanSelection() {
+  const chosen = window.__clean.filter(g => window.__cleanSel.has(g.key));
+  const files = chosen.reduce((n, g) => n + (g.count || 0), 0);
+  $('#clean-sel-summary').textContent = `已选 ${chosen.length} 部作品 · ${files} 个文件`;
+  $('#btn-clean-delete').disabled = chosen.length === 0;
+}
+async function cleanScan() {
+  await api('/api/scan-delete', {method:'POST', body: JSON.stringify(opts())});
+  window.__cleanSel.clear();
+  goto('clean'); poll(true);
+}
+$('#btn-clean-scan').onclick = cleanScan;
+$('#clean-list').addEventListener('change', e => {
+  if (!e.target.classList.contains('clean-pick')) return;
+  const key = e.target.dataset.key;
+  if (e.target.checked) window.__cleanSel.add(key); else window.__cleanSel.delete(key);
+  e.target.closest('.media-card')?.classList.toggle('selected', e.target.checked);
+  updateCleanSelection();
+});
+$('#clean-search').addEventListener('input', () => renderCleanGroups(window.__clean));
+$('#btn-clean-all').onclick = () => { cleanVisible().forEach(g => window.__cleanSel.add(g.key)); renderCleanGroups(window.__clean); };
+$('#btn-clean-none').onclick = () => { cleanVisible().forEach(g => window.__cleanSel.delete(g.key)); renderCleanGroups(window.__clean); };
+$('#btn-clean-rev').onclick = () => { cleanVisible().forEach(g =>
+  window.__cleanSel.has(g.key) ? window.__cleanSel.delete(g.key) : window.__cleanSel.add(g.key)); renderCleanGroups(window.__clean); };
+
+function confirmCleanDelete() {
+  const chosen = window.__clean.filter(g => window.__cleanSel.has(g.key));
+  if (!chosen.length) return;
+  const files = chosen.reduce((n, g) => n + (g.count || 0), 0);
+  const nfo = chosen.reduce((n, g) => n + (g.files || []).filter(f => f.kind === 'nfo').length, 0);
+  const img = chosen.reduce((n, g) => n + (g.files || []).filter(f => f.kind === 'image').length, 0);
+  const names = chosen.slice(0, 12).map(g => esc(g.title)).join('、') + (chosen.length > 12 ? ' …' : '');
+  showConfirm(`<p class="confirm-danger">此操作不可撤销：将永久删除 <b>${files}</b> 个文件（NFO ${nfo} / 图片 ${img}），涉及 <b>${chosen.length}</b> 部作品。</p>
+    <p class="confirm-names">${names}</p>
+    <p class="confirm-note">仅删除带本工具标记的 NFO 及其对应图片。第三方 NFO 与所有视频文件均不会被删除。</p>`,
+    async () => {
+      await api('/api/delete', {method:'POST', body: JSON.stringify({
+        only_movies:true, only_tv:true, title_filter:'', limit:0,
+        keys: chosen.map(g => g.key),
+      })});
+      window.__cleanSel.clear();
+      goto('clean'); poll(true);
+    });
+}
+$('#btn-clean-delete').onclick = confirmCleanDelete;
