@@ -971,6 +971,7 @@ class Job:
         self.stats = {}
         self.plan_preview = []
         self.groups = []
+        self.mode = "scan"          # scan | export | delete
         self.stop_event = threading.Event()
         self.thread = None
         self.started = 0
@@ -986,7 +987,7 @@ class Job:
             return {
                 "state": self.state, "progress": self.progress, "total": self.total,
                 "stats": self.stats, "lines": self.lines[-tail:],
-                "started": self.started,
+                "started": self.started, "mode": self.mode,
             }
 
     def start(self, fn):
@@ -1028,6 +1029,8 @@ class Job:
 
 
 def run_export(job, cfg, opts):
+    with job.lock:
+        job.mode = "export"
     db = discover_db_path(cfg)
     job.emit("数据库：%s" % db)
     if not os.path.isfile(db):
@@ -1072,6 +1075,8 @@ def run_export(job, cfg, opts):
 
 
 def run_scan(job, cfg, opts):
+    with job.lock:
+        job.mode = "scan"
     db = discover_db_path(cfg)
     job.emit("数据库：%s" % db)
     if not os.path.isfile(db):
@@ -1090,5 +1095,185 @@ def run_scan(job, cfg, opts):
         job.emit("预览：共 %d 个写入项（电影 %d / 剧集 %d / 分集 %d）" % (
             len(plan), counters["movie"], counters["tv"], counters["episode"]))
         return {"state": "done", "stats": {"plan": len(plan), **counters}}
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# delete (cleanup) operations — reverse of write_plan, safety first
+# ---------------------------------------------------------------------------
+
+def build_delete_plan(conn, cfg, opts, emit=None):
+    """Find metabridge-generated files that exist on disk and can be removed.
+
+    Reuses build_plan so the exact set of generated paths is known.  A file is
+    only a delete candidate when:
+      * it is an NFO carrying our MARKER, or
+      * it is an image/alias produced for a work whose NFO carries our MARKER.
+    Video files are never candidates.  When media_roots is configured, only
+    paths under those roots are considered.
+
+    Returns (groups, counters).  Each group mirrors group_preview's shape but
+    its `files` entries are {path, kind, size} describing files to remove.
+    """
+    plan, counters = build_plan(conn, cfg, opts, emit)
+    roots = [os.path.normpath(r) for r in (cfg.get("media_roots") or []) if r]
+
+    def allowed(path):
+        if not roots:
+            return True
+        norm = os.path.normpath(path)
+        return any(norm == r or norm.startswith(r + os.sep) for r in roots)
+
+    groups = {}
+    seen = set()
+    for op in plan:
+        nfo = Path(op["nfo"])
+        marked = nfo.is_file() and is_ours(str(nfo))
+        files = []
+        if marked and allowed(str(nfo)):
+            files.append({"path": str(nfo), "kind": "nfo", "size": nfo.stat().st_size})
+        # images / alias are only ours when the paired NFO is ours
+        if marked:
+            for dst in (op.get("images") or {}):
+                dst = Path(dst)
+                if not dst.is_file() or not allowed(str(dst)):
+                    continue
+                suffix = dst.suffix.lower()
+                if suffix in VIDEO_EXTS:
+                    continue
+                if suffix == ".nfo" and not is_ours(str(dst)):
+                    continue
+                if suffix == ".nfo":
+                    kind = "nfo"
+                elif suffix in IMAGE_EXTS:
+                    kind = "image"
+                else:
+                    continue
+                try:
+                    size = dst.stat().st_size
+                except OSError:
+                    continue
+                files.append({"path": str(dst), "kind": kind, "size": size})
+        fresh = [f for f in files if f["path"] not in seen]
+        for f in fresh:
+            seen.add(f["path"])
+        if not fresh:
+            continue
+        key = op.get("group_key") or str(nfo)
+        g = groups.setdefault(key, {
+            "key": key,
+            "kind": "tv" if op["kind"] != "movie" else "movie",
+            "title": op.get("group_title") or op["title"],
+            "meta": op.get("group_meta") or {},
+            "count": 0,
+            "files": [],
+            "dirs": set(),
+        })
+        for f in fresh:
+            g["files"].append(f)
+            g["dirs"].add(os.path.dirname(f["path"]))
+            g["count"] += 1
+    for g in groups.values():
+        g["dirs"] = sorted(g["dirs"])[:6]
+    return list(groups.values()), counters
+
+
+def delete_files(files, emit=None, stop_event=None, progress_cb=None):
+    """Delete the given generated files with a final safety check on each."""
+    stats = {"deleted": 0, "nfo": 0, "images": 0, "skipped": 0, "errors": 0, "files": []}
+    for idx, f in enumerate(files):
+        if stop_event is not None and stop_event.is_set():
+            log("已收到停止信号", emit)
+            break
+        path = Path(f["path"])
+        try:
+            suffix = path.suffix.lower()
+            if suffix in VIDEO_EXTS:
+                stats["skipped"] += 1
+                log("保护视频文件，跳过 %s" % path, emit)
+                continue
+            if not path.is_file():
+                stats["skipped"] += 1
+                continue
+            if suffix == ".nfo" and not is_ours(str(path)):
+                stats["skipped"] += 1
+                log("非本工具 NFO，跳过 %s" % path, emit)
+                continue
+            path.unlink()
+            stats["deleted"] += 1
+            stats["nfo" if suffix == ".nfo" else "images"] += 1
+            stats["files"].append(str(path))
+            log("已删除 %s" % path, emit)
+        except Exception as exc:
+            stats["errors"] += 1
+            log("删除失败 %s: %s" % (path, exc), emit)
+        if (idx + 1) % 20 == 0 or idx + 1 == len(files):
+            log("进度 %d/%d" % (idx + 1, len(files)), emit)
+            if progress_cb:
+                progress_cb(idx + 1)
+    return stats
+
+
+def run_delete_scan(job, cfg, opts):
+    with job.lock:
+        job.mode = "delete"
+    db = discover_db_path(cfg)
+    job.emit("数据库：%s" % db)
+    if not os.path.isfile(db):
+        job.emit("数据库不存在")
+        return {"state": "error", "stats": {}}
+    conn = connect(db)
+    try:
+        groups, counters = build_delete_plan(conn, cfg, opts, job.emit)
+        total = sum(g["count"] for g in groups)
+        with job.lock:
+            job.groups = groups
+            job.plan_preview = [{"kind": g["kind"], "title": g["title"], "nfo": "",
+                                 "files": g["files"]} for g in groups[:200]]
+        job.emit("可清理：%d 部作品 / %d 个文件（电影 %d / 剧集 %d / 分集 %d）" % (
+            len(groups), total, counters["movie"], counters["tv"], counters["episode"]))
+        return {"state": "done", "stats": {"groups": len(groups), "files": total, **counters}}
+    finally:
+        conn.close()
+
+
+def run_delete(job, cfg, opts):
+    with job.lock:
+        job.mode = "delete"
+    db = discover_db_path(cfg)
+    job.emit("数据库：%s" % db)
+    if not os.path.isfile(db):
+        job.emit("数据库不存在")
+        return {"state": "error", "stats": {}}
+    conn = connect(db)
+    try:
+        groups, counters = build_delete_plan(conn, cfg, opts, job.emit)
+        keys = opts.get("keys")
+        if keys:
+            if isinstance(keys, str):
+                keys = [keys]
+            wanted = set(keys)
+            groups = [g for g in groups if g["key"] in wanted]
+            job.emit("按勾选清理：%d 部作品" % len(groups))
+        files = [f for g in groups for f in g["files"]]
+        with job.lock:
+            job.total = len(files)
+            job.groups = groups
+        job.emit("开始删除 %d 个元文件（视频文件受保护，不会被删除）" % len(files))
+        stats = delete_files(files, job.emit, job.stop_event, job.set_progress)
+        job.emit("完成：删除 %d 个（NFO %d / 图片 %d / 跳过 %d / 失败 %d）" % (
+            stats["deleted"], stats["nfo"], stats["images"],
+            stats["skipped"], stats["errors"]))
+        outdir = opts.get("var_dir", "")
+        if outdir:
+            try:
+                with open(os.path.join(outdir, "last_delete.json"), "w", encoding="utf-8") as fh:
+                    json.dump({"time": time.time(), "stats": stats,
+                               "files": stats.get("files", [])[:5000]}, fh,
+                              ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        return {"state": "done" if not job.stop_event.is_set() else "stopped", "stats": stats}
     finally:
         conn.close()
