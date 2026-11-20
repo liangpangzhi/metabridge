@@ -93,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             cfg = core.load_config(CFG_PATH)
             return self._send(200, {
-                "ok": True, "version": "1.0.3", "config": cfg,
+                "ok": True, "version": "1.0.4", "config": cfg,
                 "db": _db_info(cfg), "job": JOB.snapshot(120),
             })
         if path == "/api/job":
@@ -168,9 +168,27 @@ class Handler(BaseHTTPRequestHandler):
             if not JOB.start(lambda job: core.run_export(job, cfg, opts)):
                 return self._send(409, {"ok": False, "error": "已有任务在运行"})
             return self._send(200, {"ok": True})
-        if path == "/api/stop":
-            JOB.stop()
+        if path == "/api/scan-delete":
+            opts = {k: body.get(k, cfg.get(k)) for k in
+                    ("only_movies", "only_tv", "title_filter", "limit")}
+            if not JOB.start(lambda job: core.run_delete_scan(job, cfg, opts)):
+                return self._send(409, {"ok": False, "error": "已有任务在运行"})
             return self._send(200, {"ok": True})
+        if path == "/api/delete":
+            opts = {k: body.get(k, cfg.get(k)) for k in
+                    ("only_movies", "only_tv", "title_filter", "limit")}
+            if "keys" in body:
+                opts["keys"] = body["keys"]
+            opts["var_dir"] = VAR
+            if not JOB.start(lambda job: core.run_delete(job, cfg, opts)):
+                return self._send(409, {"ok": False, "error": "已有任务在运行"})
+            return self._send(200, {"ok": True})
+        if path == "/api/stop":
+            with JOB.lock:
+                active = bool(JOB.thread and JOB.thread.is_alive())
+            if active:
+                JOB.stop()
+            return self._send(200, {"ok": True, "stopped": active})
         if path == "/api/clearlog":
             with JOB.lock:
                 JOB.lines = []
