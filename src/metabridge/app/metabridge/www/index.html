@@ -16,6 +16,7 @@
   <button class="tab active" data-tab="home">剧集总概述</button>
   <button class="tab" data-tab="preview">预览与确认</button>
   <button class="tab" data-tab="export">导出结果</button>
+  <button class="tab" data-tab="clean">清理删除</button>
   <button class="tab" data-tab="logs">日志</button>
   <button class="tab" data-tab="settings">设置</button>
 </nav>
@@ -85,6 +86,32 @@
     </div>
   </div>
   <div class="box logbox"><h3>实时日志</h3><pre id="log">尚无任务日志。</pre></div>
+</section>
+
+<section id="tab-clean" class="panel">
+  <div class="section-head">
+    <div>
+      <h2>清理删除已导出的元数据</h2>
+      <p class="sub">扫描并移除本工具写入的 NFO 与图片，恢复导出前的状态。<strong>视频文件永不删除</strong>；未点「确认删除」前不会改动任何文件。</p>
+    </div>
+    <div class="btnrow">
+      <button id="btn-clean-scan" class="ghost">扫描可删除文件</button>
+      <button id="btn-clean-all" class="mini">全选</button>
+      <button id="btn-clean-none" class="mini">全不选</button>
+      <button id="btn-clean-rev" class="mini">反选</button>
+    </div>
+  </div>
+  <div class="danger-note">⚠️ 删除操作不可撤销。仅列出带「元影桥生成」标记的 NFO，以及这些作品对应的海报 / 背景 / 剧照；第三方 NFO 与所有视频文件均受保护。</div>
+  <div id="clean-summary" class="preview-summary">还没有扫描。点击「扫描可删除文件」查看本工具写入的元文件。</div>
+  <div class="filterbar">
+    <input type="text" id="clean-search" placeholder="在扫描结果中搜索片名 / 演员 / 类型">
+  </div>
+  <div id="clean-list" class="cards-grid"></div>
+  <div class="sticky-bar danger">
+    <span id="clean-sel-summary">已选 0 部作品</span>
+    <button id="btn-clean-delete" class="danger" disabled>确认删除所选</button>
+  </div>
+  <div class="box logbox"><h3>删除日志</h3><pre id="clean-log">尚无删除日志。</pre></div>
 </section>
 
 <section id="tab-logs" class="panel">
